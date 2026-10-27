@@ -83,6 +83,13 @@ h2{font-size:15px;color:var(--navy);margin:20px 0 8px}
 .dlg .acts{display:flex;gap:8px;margin-top:14px}
 .dlg .acts button{flex:1;min-height:44px;border:0;border-radius:10px;font:inherit}
 .note{font-size:12px;color:var(--sub);margin-top:16px}
+.teiji{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--navy);border-radius:10px;padding:10px 14px;margin:10px 0}
+.teiji h3{margin:0 0 6px;font-size:14px;color:var(--navy);display:flex;align-items:center;gap:8px}
+.teiji dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:14px}
+.teiji dt{color:var(--sub);white-space:nowrap}
+.teiji dd{margin:0;white-space:pre-wrap}
+.teiji .ph{background:#fff4e5;border-radius:4px}
+.pchip{font-size:11px;color:#8a4b00;background:#ffe9c7;border-radius:999px;padding:1px 7px;margin-left:4px;white-space:nowrap}
 .hide{display:none!important}
 </style>
 </head>
@@ -169,7 +176,14 @@ function render(){
   const tb = $("tabs"); tb.classList.remove("hide"); requestAnimationFrame(fitTabs);
   tb.innerHTML = TABS.map(t => { const c = counts(t); return `<button class="${t===tab?"on":""}" onclick="go('${t}')">${t}<span class="cnt">${c.done}/${c.n}</span></button>`; }).join("");
   let h = "";
-  if(s.disease || s.point){
+  if(s.teiji && s.teiji.length){
+    const open = tab === TABS[0] || tab === TABS.find(t => (s.sections[t]||[]).length);
+    h += `<details class="teiji" ${open ? "open" : ""}><summary style="cursor:pointer"><b style="color:var(--navy)">想定提示（想定集の原文）</b></summary>`;
+    if(s.photo) h += `<div style="font-size:12px;color:#8a4b00;margin:6px 0">［写真］の付いた欄の内容が分かる、状況評価の写真を見せる</div>`;
+    else h += `<div style="font-size:12px;color:var(--sub);margin:6px 0">このステーションでは状況評価の写真は使わない</div>`;
+    h += `<dl>` + s.teiji.map(([k,v,ph]) => `<dt>${esc(k)}${ph && s.photo ? '<span class="pchip">写真</span>' : ""}</dt><dd class="${ph && s.photo ? "ph" : ""}">${esc(v)}</dd>`).join("") + `</dl></details>`;
+  }
+  if(s.disease || s.point || s.teiji){
     h += `<div class="info">`;
     if(s.disease) h += showDisease ? `<div><span class="lbl">病態（受講者に見せない）：</span>${esc(s.disease)}</div>` : "";
     if(s.disease) h += `<button class="toggle" onclick="showDisease=!showDisease;render()">${showDisease?"病態を隠す":"病態を表示"}</button>　`;
@@ -264,6 +278,7 @@ function editScenario(){
     <label>想定名</label><input id="fT" value="${esc(s.title)}">
     <label>病態（受講者に見せない）</label><textarea id="fD">${esc(s.disease)}</textarea>
     <label>ポイント</label><textarea id="fP">${esc(s.point)}</textarea>
+    <label>想定提示（1行に「見出し：本文」。写真に使う欄は先頭に［写真］）</label><textarea id="fTj" style="min-height:160px">${esc((s.teiji||[]).map(([k,v,ph]) => (ph ? "［写真］" : "") + k + "：" + String(v).replace(/\n/g, " ")).join("\n"))}</textarea>
     <div class="acts"><button type="button" class="secondary" onclick="closeDlg()">やめる</button>
     <button type="button" class="primary" onclick="saveScenario()">保存</button></div>`;
   openDlg();
@@ -271,6 +286,9 @@ function editScenario(){
 function saveScenario(){
   const s = DATA.scenarios[cur];
   s.title = $("fT").value.trim() || s.title; s.disease = $("fD").value.trim(); s.point = $("fP").value.trim();
+  s.teiji = $("fTj").value.split("\n").map(x => x.trim()).filter(Boolean).map(line => {
+    const ph = line.startsWith("［写真］"); const t = ph ? line.slice(4) : line; const i = t.indexOf("：");
+    return i > 0 ? [t.slice(0, i), t.slice(i + 1), ph] : ["", t, ph]; });
   save(); closeDlg(); render();
 }
 
@@ -317,7 +335,13 @@ async function decrypt(pass){
   const plain = await sub.decrypt({name:"AES-GCM", iv:b64(e.iv)}, key, b64(e.data));
   return JSON.parse(new TextDecoder().decode(plain));
 }
-function opened(d){ BASE = d; DATA = load(); home(); }
+function opened(d){
+  BASE = d; DATA = load();
+  // 前の版で保存した修正には想定提示がないので、元のデータから補う
+  const byId = {}; BASE.scenarios.forEach(x => byId[x.id] = x);
+  DATA.scenarios.forEach(x => { const b = byId[x.id]; if(b && x.teiji === undefined){ x.teiji = b.teiji; x.photo = b.photo; } });
+  home();
+}
 function lockScreen(msg){
   $("setBtn").classList.add("hide");
   $("main").innerHTML = `<div class="info" style="margin-top:24px"><b>パスコードを入れてください</b><br>
