@@ -106,6 +106,7 @@ h2{font-size:15px;color:var(--navy);margin:20px 0 8px}
 <script>
 let BASE = /*__DATA__*/null;
 const TABS = ["状況評価","初期評価","全身観察","車内収容後"];
+const ORIG = "原本";
 const KEY = "jptec_obs_eval_v1";
 let DATA = null;
 let cur = null;        // 選んでいる想定
@@ -132,7 +133,8 @@ function load(){
   try{ const s = localStorage.getItem(KEY); if(s){ const d = JSON.parse(s); if(d && d.scenarios) return d; } }catch(e){}
   return JSON.parse(JSON.stringify(BASE));
 }
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify(DATA)); }catch(e){} }
+function noImg(k, v){ return k === "orig" ? undefined : v; }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(DATA, noImg)); }catch(e){} }
 function esc(s){ return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function kindCls(k){ return k==="あり" ? "ari" : k==="なし" ? "nashi" : "kakunin"; }
 function kindLabel(k){ return k==="あり" ? "所見あり" : k==="なし" ? "所見なし" : "確認項目"; }
@@ -174,7 +176,9 @@ function render(){
   const s = DATA.scenarios[cur];
   $("hTitle").textContent = s.title; $("backBtn").classList.remove("hide");
   const tb = $("tabs"); tb.classList.remove("hide"); requestAnimationFrame(fitTabs);
-  tb.innerHTML = TABS.map(t => { const c = counts(t); return `<button class="${t===tab?"on":""}" onclick="go('${t}')">${t}<span class="cnt">${c.done}/${c.n}</span></button>`; }).join("");
+  tb.innerHTML = TABS.map(t => { const c = counts(t); return `<button class="${t===tab?"on":""}" onclick="go('${t}')">${t}<span class="cnt">${c.done}/${c.n}</span></button>`; }).join("")
+    + `<button class="${tab===ORIG?"on":""}" onclick="go('${ORIG}')">${ORIG}<span class="cnt">${(s.orig||[]).length ? "想定集" : "なし"}</span></button>`;
+  if(tab === ORIG){ renderOrig(s); return; }
   let h = "";
   if(s.teiji && s.teiji.length){
     const open = tab === TABS[0] || tab === TABS.find(t => (s.sections[t]||[]).length);
@@ -214,6 +218,22 @@ function render(){
   bar.innerHTML = `<button class="secondary" onclick="clearEval()">評価を消す</button><button class="primary" onclick="result()">結果を見る</button>`;
 }
 window.addEventListener("resize", fitTabs);
+function renderOrig(s){
+  const imgs = s.orig || [];
+  let h = `<div class="info">愛知シナリオ集（原本）のうち、この想定の部分だけを表示しています。指で広げると拡大できます。</div>`;
+  h += imgs.length ? imgs.map((src, i) => `<img src="${src}" alt="原本" onclick="bigImg(${i})" style="width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:8px;margin:6px 0;display:block;cursor:zoom-in">`).join("") + `<div class="note">画像を押すと大きく表示します。</div>`
+                   : `<div class="empty">この想定には原本がありません。</div>`;
+  $("main").innerHTML = h;
+  const bar = $("bar"); bar.classList.remove("hide");
+  bar.innerHTML = `<button class="secondary" onclick="clearEval()">評価を消す</button><button class="primary" onclick="result()">結果を見る</button>`;
+}
+function bigImg(i){
+  const src = (DATA.scenarios[cur].orig || [])[i]; if(!src) return;
+  const ov = document.createElement("div"); ov.className = "ov"; ov.style.cssText = "align-items:flex-start;overflow:auto;padding:0";
+  ov.innerHTML = `<div style="position:sticky;top:0;left:0;width:100%;display:flex;justify-content:flex-end;padding:10px"><button class="b primary" style="flex:0 0 auto;color:#fff;padding:0 18px">閉じる</button></div>`;
+  const im = new Image(); im.src = src; im.style.cssText = "width:200%;max-width:none;background:#fff;display:block";
+  ov.appendChild(im); ov.querySelector("button").onclick = () => ov.remove(); document.body.appendChild(ov);
+}
 function go(t){ tab = t; render(); window.scrollTo(0,0); }
 function mark(k, key, v){ const e = ev[tab][k]; e[key] = e[key]===v ? undefined : v; render(); }
 function clearEval(){ ask("この受講者の評価をすべて消しますか？", () => start(cur)); }
@@ -305,7 +325,7 @@ function settings(){
   openDlg();
 }
 function exportData(){
-  const blob = new Blob([JSON.stringify(DATA, null, 1)], {type:"application/json"});
+  const blob = new Blob([JSON.stringify(DATA, noImg, 1)], {type:"application/json"});
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
   a.download = "外傷観察評価_項目.json"; document.body.appendChild(a); a.click(); a.remove();
 }
@@ -339,7 +359,7 @@ function opened(d){
   BASE = d; DATA = load();
   // 前の版で保存した修正には想定提示がないので、元のデータから補う
   const byId = {}; BASE.scenarios.forEach(x => byId[x.id] = x);
-  DATA.scenarios.forEach(x => { const b = byId[x.id]; if(b && x.teiji === undefined){ x.teiji = b.teiji; x.photo = b.photo; } });
+  DATA.scenarios.forEach(x => { const b = byId[x.id]; if(b && x.teiji === undefined){ x.teiji = b.teiji; x.photo = b.photo; } if(b) x.orig = b.orig; });
   home();
 }
 function lockScreen(msg){
